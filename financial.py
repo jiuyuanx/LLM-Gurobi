@@ -1,106 +1,69 @@
-import time
-from gurobipy import GRB, Model
+import gurobipy as gp
+from gurobipy import GRB
 
-# Example data
-
-capacity_in_supplier = {'supplier1': 150, 'supplier2': 50, 'supplier3': 100}
-
-shipping_cost_from_supplier_to_roastery = {
-    ('supplier1', 'roastery1'): 5,
-    ('supplier1', 'roastery2'): 4,
-    ('supplier2', 'roastery1'): 6,
-    ('supplier2', 'roastery2'): 3,
-    ('supplier3', 'roastery1'): 2,
-    ('supplier3', 'roastery2'): 7
-}
-
-roasting_cost_light = {'roastery1': 3, 'roastery2': 5}
-
-roasting_cost_dark = {'roastery1': 5, 'roastery2': 6}
-
-shipping_cost_from_roastery_to_cafe = {
-    ('roastery1', 'cafe1'): 5,
-    ('roastery1', 'cafe2'): 3,
-    ('roastery1', 'cafe3'): 6,
-    ('roastery2', 'cafe1'): 4,
-    ('roastery2', 'cafe2'): 5,
-    ('roastery2', 'cafe3'): 2
-}
-
-light_coffee_needed_for_cafe = {'cafe1': 20, 'cafe2': 30, 'cafe3': 40}
-
-dark_coffee_needed_for_cafe = {'cafe1': 20, 'cafe2': 20, 'cafe3': 100}
-
-cafes = list(set(i[1] for i in shipping_cost_from_roastery_to_cafe.keys()))
-roasteries = list(
-    set(i[1] for i in shipping_cost_from_supplier_to_roastery.keys()))
-suppliers = list(
-    set(i[0] for i in shipping_cost_from_supplier_to_roastery.keys()))
+# Model Parameters
+C = 30000   # Total consulting payment
+D = 7000    # Initial credit card debt
+r1 = 0.1595 # APR of Card 1
+r2 = 0.029  # APR of Card 2
+r3 = 0.002  # Transfer fee rate
+B = 70000   # Annual base salary
+alpha = 80000 # Tax threshold parameter
 
 # Create a new model
-model = Model("coffee_distribution")
+model = gp.Model("wealth_maximization")
 
-# OPTIGUIDE DATA CODE GOES HERE
+# Decision Variables
+P = model.addVars(2, 6, name="P", vtype=GRB.CONTINUOUS)
+T = model.addVars(2, 6, name="T", vtype=GRB.CONTINUOUS)
+S = model.addVars(2, 6, name="S", vtype=GRB.CONTINUOUS)
+d1 = model.addVars(2, name="d1", vtype=GRB.CONTINUOUS)
+d2 = model.addVars(2, name="d2", vtype=GRB.CONTINUOUS)
 
-# Create variables
-x = model.addVars(shipping_cost_from_supplier_to_roastery.keys(),
-                  vtype=GRB.INTEGER,
-                  name="x")
-y_light = model.addVars(shipping_cost_from_roastery_to_cafe.keys(),
-                        vtype=GRB.INTEGER,
-                        name="y_light")
-y_dark = model.addVars(shipping_cost_from_roastery_to_cafe.keys(),
-                       vtype=GRB.INTEGER,
-                       name="y_dark")
+# Objective Function
+wealth_expr = gp.quicksum(S[i,t] - P[i,t] - (0.1*d1[i] + 0.28*d2[i]) for i in range(1,3) for t in range(1,7)) - (D * (1 + r1)**12)
+model.setObjective(wealth_expr, GRB.MAXIMIZE)
 
-# Set objective
-model.setObjective(
-    sum(x[i] * shipping_cost_from_supplier_to_roastery[i]
-        for i in shipping_cost_from_supplier_to_roastery.keys()) +
-    sum(roasting_cost_light[r] * y_light[r, c] +
-        roasting_cost_dark[r] * y_dark[r, c]
-        for r, c in shipping_cost_from_roastery_to_cafe.keys()) + sum(
-            (y_light[j] + y_dark[j]) * shipping_cost_from_roastery_to_cafe[j]
-            for j in shipping_cost_from_roastery_to_cafe.keys()), GRB.MINIMIZE)
+# Constraints
+# 1. Credit Card Payment
+model.addConstr(gp.quicksum(P[i,t] for i in range(1,3) for t in range(1,7)) == D)
 
-# Conservation of flow constraint
-for r in set(i[1] for i in shipping_cost_from_supplier_to_roastery.keys()):
-    model.addConstr(
-        sum(x[i] for i in shipping_cost_from_supplier_to_roastery.keys()
-            if i[1] == r) == sum(
-                y_light[j] + y_dark[j]
-                for j in shipping_cost_from_roastery_to_cafe.keys()
-                if j[0] == r), f"flow_{r}")
+# 2. Transfer Limits
+for i in range(1, 3):
+    for t in range(1, 7):
+        model.addConstr(T[i,t] <= D - gp.quicksum(P[i,k] for k in range(1, t)))
 
-# Add supply constraints
-for s in set(i[0] for i in shipping_cost_from_supplier_to_roastery.keys()):
-    model.addConstr(
-        sum(x[i] for i in shipping_cost_from_supplier_to_roastery.keys()
-            if i[0] == s) <= capacity_in_supplier[s], f"supply_{s}")
+# 3. Total Consulting Payment Distribution
+model.addConstr(gp.quicksum(S[i,t] for i in range(1,3) for t in range(1,7)) == C)
 
-# Add demand constraints
-for c in set(i[1] for i in shipping_cost_from_roastery_to_cafe.keys()):
-    model.addConstr(
-        sum(y_light[j] for j in shipping_cost_from_roastery_to_cafe.keys()
-            if j[1] == c) >= light_coffee_needed_for_cafe[c],
-        f"light_demand_{c}")
-    model.addConstr(
-        sum(y_dark[j] for j in shipping_cost_from_roastery_to_cafe.keys()
-            if j[1] == c) >= dark_coffee_needed_for_cafe[c],
-        f"dark_demand_{c}")
+# 4. Monthly Consulting Payment Limit
+for i in range(1, 3):
+    for t in range(1, 7):
+        model.addConstr(S[i,t] <= (4/3) * (C/6))
 
-# Optimize model
-model.optimize()
-m = model
+# 5. Tax Calculation
+for i in range(1, 3):
+    G = B/4 + gp.quicksum(S[1,t] for t in range(1, 4)) if i == 1 else B/4 + gp.quicksum(S[2,t] for t in range(4, 7))
+    model.addConstr(d2[i] >= G - alpha)
+    model.addConstr(d2[i] >= 0)
+    model.addConstr(d1[i] >= G - d2[i])
+    model.addConstr(d1[i] >= d2[i] - alpha)
 
-# OPTIGUIDE CONSTRAINT CODE GOES HERE
+# 6. Gross Income Calculation is embedded in the tax constraints
 
-# Solve
-m.update()
+# 7. Debt and Payment Dynamics
+# These are handled by the Credit Card Payment and Transfer Limits constraints
+
+# 8. Non-Negativity
+# Automatically handled by decision variable definitions
+
+# Optimize the model
 model.optimize()
 
-print(time.ctime())
-if m.status == GRB.OPTIMAL:
-    print(f'Optimal cost: {m.objVal}')
+# Output the solution
+if model.status == GRB.OPTIMAL:
+    for v in model.getVars():
+        print(f'{v.varName}: {v.x}')
+
 else:
-    print("Not solved to optimality. Optimization status:", m.status)
+    print('No optimal solution found')
