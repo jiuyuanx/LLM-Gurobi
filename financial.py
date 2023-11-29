@@ -1,69 +1,56 @@
-import gurobipy as gp
-from gurobipy import GRB
+from gurobipy import Model, GRB, quicksum
 
-# Model Parameters
-C = 30000   # Total consulting payment
-D = 7000    # Initial credit card debt
-r1 = 0.1595 # APR of Card 1
-r2 = 0.029  # APR of Card 2
-r3 = 0.002  # Transfer fee rate
-B = 70000   # Annual base salary
-alpha = 80000 # Tax threshold parameter
+# Initialize Model
+model = Model("Personal Finance Optimization")
 
-# Create a new model
-model = gp.Model("wealth_maximization")
+# Parameters
+C = 30000  # Total consulting payment
+D = 7000   # Initial credit card debt
+r1 = 0.1595  # APR of Card 1
+r2 = 0.029   # APR of Card 2
+r3 = 0.002   # Transfer fee rate
+B = 70000  # Annual base salary
+alpha = 80000  # Tax threshold parameter
 
-# Decision Variables
-P = model.addVars(2, 6, name="P", vtype=GRB.CONTINUOUS)
-T = model.addVars(2, 6, name="T", vtype=GRB.CONTINUOUS)
-S = model.addVars(2, 6, name="S", vtype=GRB.CONTINUOUS)
-d1 = model.addVars(2, name="d1", vtype=GRB.CONTINUOUS)
-d2 = model.addVars(2, name="d2", vtype=GRB.CONTINUOUS)
+# Decision Variables for 6 months (3 months each in two years)
+P = model.addVars(6, name="P")  # Payments towards credit card
+T = model.addVars(6, name="T")  # Debt transfer amounts
+S = model.addVars(6, name="S")  # Consulting payments
+d1 = model.addVar(name="d1")    # Auxiliary variable for tax calculation in Year 1
+d2 = model.addVar(name="d2")    # Auxiliary variable for tax calculation in Year 2
 
 # Objective Function
-wealth_expr = gp.quicksum(S[i,t] - P[i,t] - (0.1*d1[i] + 0.28*d2[i]) for i in range(1,3) for t in range(1,7)) - (D * (1 + r1)**12)
-model.setObjective(wealth_expr, GRB.MAXIMIZE)
+wealth = quicksum(S[t] - P[t] for t in range(6)) - (0.1 * d1 + 0.28 * d2)
+model.setObjective(wealth, GRB.MAXIMIZE)
 
 # Constraints
-# 1. Credit Card Payment
-model.addConstr(gp.quicksum(P[i,t] for i in range(1,3) for t in range(1,7)) == D)
+# Total consulting payment distribution
+model.addConstr(quicksum(S[t] for t in range(6)) == C)
 
-# 2. Transfer Limits
-for i in range(1, 3):
-    for t in range(1, 7):
-        model.addConstr(T[i,t] <= D - gp.quicksum(P[i,k] for k in range(1, t)))
+# Monthly consulting payment limit
+for t in range(6):
+    model.addConstr(S[t] <= (4/3) * (C/6))
 
-# 3. Total Consulting Payment Distribution
-model.addConstr(gp.quicksum(S[i,t] for i in range(1,3) for t in range(1,7)) == C)
+# Credit Card Payment
+model.addConstr(D - quicksum(P[t] for t in range(6)) == 0)
 
-# 4. Monthly Consulting Payment Limit
-for i in range(1, 3):
-    for t in range(1, 7):
-        model.addConstr(S[i,t] <= (4/3) * (C/6))
+# Transfer Limits
+for t in range(6):
+    model.addConstr(T[t] <= D - quicksum(P[k] for k in range(t)))
 
-# 5. Tax Calculation
-for i in range(1, 3):
-    G = B/4 + gp.quicksum(S[1,t] for t in range(1, 4)) if i == 1 else B/4 + gp.quicksum(S[2,t] for t in range(4, 7))
-    model.addConstr(d2[i] >= G - alpha)
-    model.addConstr(d2[i] >= 0)
-    model.addConstr(d1[i] >= G - d2[i])
-    model.addConstr(d1[i] >= d2[i] - alpha)
+# Tax Calculation
+# Year 1 (Last 3 months)
+model.addConstr(d1 >= quicksum(S[t] for t in range(3)) + B/4 - alpha)
+model.addConstr(d1 >= 0)
+# Year 2 (First 3 months)
+model.addConstr(d2 >= quicksum(S[t] for t in range(3, 6)) + B/4 - alpha)
+model.addConstr(d2 >= 0)
 
-# 6. Gross Income Calculation is embedded in the tax constraints
-
-# 7. Debt and Payment Dynamics
-# These are handled by the Credit Card Payment and Transfer Limits constraints
-
-# 8. Non-Negativity
-# Automatically handled by decision variable definitions
-
-# Optimize the model
+# Solve
 model.optimize()
 
-# Output the solution
+# Print Solution
 if model.status == GRB.OPTIMAL:
-    for v in model.getVars():
-        print(f'{v.varName}: {v.x}')
-
-else:
-    print('No optimal solution found')
+    print("Optimal Wealth:", model.objVal)
+    for t in range(6):
+        print(f"Month {t+1}: Payment {P[t].x}, Transfer {T[t].x}, Salary {S[t].x}")
