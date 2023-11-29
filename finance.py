@@ -12,6 +12,8 @@ r3 = 0.002   # Transfer fee rate
 B = 70000  # Annual base salary
 alpha = 80000  # Tax threshold parameter
 
+# OPTIGUIDE DATA CODE GOES HERE
+
 # Decision Variables for 6 months (3 months each in two years)
 P = model.addVars(6, name="P")  # Payments towards credit card
 T = model.addVars(6, name="T")  # Debt transfer amounts
@@ -48,6 +50,7 @@ model.addConstr(d2 >= 0)
 
 # Solve
 model.optimize()
+# OPTIGUIDE CONSTRAINT CODE GOES HERE
 
 # Print Solution
 if model.status == GRB.OPTIMAL:
