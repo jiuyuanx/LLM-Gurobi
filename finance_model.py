@@ -1,8 +1,4 @@
 from gurobipy import Model, GRB, quicksum
-
-# Initialize Model
-model = Model("Personal Finance Optimization")
-
 # Parameters
 C = 30000  # Total consulting payment
 D = 7000   # Initial credit card debt
@@ -11,6 +7,11 @@ r2 = 0.029 / 12   # Monthly APR of Card 2
 r3 = 0.002        # Transfer fee rate
 B = 70000     # Annual base salary
 alpha = 80000     # Tax threshold parameter
+
+# Create a new model
+model = Model("Personal Finance Optimization")
+
+# OPTIGUIDE DATA CODE GOES HERE
 
 # Decision Variables for 6 months (3 months each in two years)
 P1 = model.addVars(6, name="P1")        # Payments towards credit card 1
@@ -74,6 +75,7 @@ model.addConstr(d2 >= 0)
 
 # Solve
 model.optimize()
+# OPTIGUIDE CONSTRAINT CODE GOES HERE
 
 # Print Solution
 if model.status == GRB.OPTIMAL:
