@@ -1,5 +1,5 @@
 from gurobipy import Model, GRB, quicksum
-# Parameters
+# Example data
 C = 30000  # Total consulting payment
 D = 7000   # Initial credit card debt
 r1 = 0.1595 / 12  # Monthly APR of Card 1
@@ -13,7 +13,7 @@ model = Model("Personal Finance Optimization")
 
 # OPTIGUIDE DATA CODE GOES HERE
 
-# Decision Variables for 6 months (3 months each in two years)
+# Create variables
 P1 = model.addVars(6, name="P1")        # Payments towards credit card 1
 P2 = model.addVars(6, name="P2")        # Payments towards credit card 2
 T = model.addVars(6, name="T")        # Debt transfer amounts
@@ -29,29 +29,24 @@ M = 10000000  # A large number, should be larger than any expected value of inco
 balance1 = model.addVars(6, name="balance1")  # Outstanding balance on Card 1
 balance2 = model.addVars(6, name="balance2")  # Outstanding balance on Card 2
 
-# Objective Function
+# Set objective
 total_tax = 0.1 * d1_1 + 0.28 * d2_1 + 0.1 * d1_2 + 0.28 * d2_2
 wealth = B*2 + quicksum(S[t] - P1[t] - P2[t] for t in range(6)) - total_tax
 model.setObjective(wealth, GRB.MAXIMIZE)
 
-# Constraints
-# Total consulting payment distribution
+# Consulting Payment Constraints
 model.addConstr(quicksum(S[t] for t in range(6)) == C)
 
-# Monthly consulting payment limit
+# Monthly Consulting Payment Constraints
 for t in range(6):
     model.addConstr(S[t] <= (4/3) * (C/6))
 
-# Credit Card Payment
-# model.addConstr(D - quicksum(P[t] for t in range(6)) == 0)
-
-#Pay constraint: Don't use more money than you have to pay. Pay off all balance at the end
-#quicksum to find money in hand in the last period
+#Credit Card Payment constraint: Don't use more money than you have to pay. Pay off all balance at the end
 [model.addConstr(P1[t] + P2[t] - (S[t]+quicksum([S[i]-P1[i]-P2[i] for i in range(t)])) <= 0) for t in range(6)]
 model.addConstr(balance1[5]<= 0)
 model.addConstr(balance2[5]<= 0)
 
-# Transfer Limits
+# Transfer Constraint
 for t in range(6):
     model.addConstr(T[t] <= D - quicksum(P1[k] for k in range(t)))
 
@@ -83,8 +78,12 @@ model.addConstr(d1_2 >= G2 - M*(1 - binary_var))
 model.addConstr(d1_2 >= alpha - M*binary_var)
 model.addConstr(d2_2 == G2 - d1_2)
 
+# Optimize model
+model.optimize()
 m = model
+
 # OPTIGUIDE CONSTRAINT CODE GOES HERE
+
 # Solve
 m.update()
 model.optimize()
