@@ -58,7 +58,7 @@ for t in range(6):
         model.addConstr(balance2[t] == T[t] * (1 + r2))
     else:
         model.addConstr(balance1[t] == (balance1[t-1] - P1[t] - T[t]) * (1 + r1))
-        model.addConstr(balance2[t] == (balance2[t-1] - P2[t] + T[t] * (1 - r3)) * (1 + r2) )
+        model.addConstr(balance2[t] == (balance2[t-1] - P2[t] + T[t] * (1 + r3)) * (1 + r2) )
 
 # Tax Calculation
 # Constraints for the first fiscal year
